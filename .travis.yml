@@ -4,5 +4,5 @@ python:
 install: "pip install -r requirements-tests.txt"
 # command to run tests
 script:
-  - flake8 tests/*.py aioldsplice/*.py
+  - flake8 tests/*.py aioldsplice/*.py setup.py
   - nosetests --with-coverage --cover-package=aioldsplice tests
