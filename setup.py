@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
 
-setup(name='oldsplice',
+setup(name='aioldsplice',
     version='0.0.1',
-    description='asyncio splice proxy for two sockets',
-    url='http://github.com/tommyvn/oldsplice',
+    description='asyncio splicing socket proxy',
+    url='http://github.com/drie/aioldsplice',
     author='Tom van Neerijnen',
     author_email='tom@tomvn.com',
     keywords='proxy splice socket',
