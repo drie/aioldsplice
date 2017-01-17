@@ -1,6 +1,7 @@
 from setuptools import setup, find_packages
 
-setup(name='aioldsplice',
+setup(
+    name='aioldsplice',
     version='0.0.1',
     description='asyncio splicing socket proxy',
     url='http://github.com/drie/aioldsplice',
