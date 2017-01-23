@@ -22,7 +22,7 @@ class TestConcerns(asynctest.TestCase):
         self._l.sendall(b"test")
         await aioldsplice.reader_ready(self._r, _loop=self.loop)
 
-    async def test_concern_cancel(self):
+    def test_concern_cancel(self):
         wc = aioldsplice.writer_ready(self._l, _loop=self.loop)
         wc.cancel()
         rc = aioldsplice.reader_ready(self._l, _loop=self.loop)
