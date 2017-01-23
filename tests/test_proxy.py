@@ -60,7 +60,6 @@ class TestProxy(asynctest.TestCase):
         proxy_task = self.loop.create_task(aioldsplice.proxy(self.server_conn, self.server_conn,
                                                              _loop=self.loop))
         self.client_conn.sendall(self._test_msg)
-        await aioldsplice.reader_ready(self.server_conn)
         await aioldsplice.reader_ready(self.client_conn)
         self._test_return_msg = self.client_conn.recv(1024)
         return proxy_task
@@ -70,16 +69,6 @@ class TestProxy(asynctest.TestCase):
         self.client_conn.close()
         await proxy_task
         self.assertEqual(self._test_return_msg, self._test_msg)
-
-    # TODO fix this, altho TBH I'm not convinced this should work.
-    # async def test_proxy_then_server_shutdown(self):
-    #     print("here 1")
-    #     proxy_task = await self.__test_proxy_then_()
-    #     print("here 2")
-    #     self.server_conn.close()
-    #     await proxy_task
-    #     print("here 3")
-    #     self.assertEqual(self._test_return_msg, self._test_msg)
 
     @asynctest.patch('aioldsplice.writer_ready', wraps=aioldsplice.writer_ready)
     async def test_proxy_when_writer_isnt_ready(self, writer_ready_mock):
