@@ -2,9 +2,34 @@ import asyncio
 import asynctest
 import aioldsplice
 import socket
+from contextlib import contextmanager
 
 
-class TestConcerns(asynctest.TestCase):
+class BaseCase(asynctest.TestCase):
+
+    @contextmanager
+    def socketpair(self):
+        server_listener_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_listener_conn = server_listener_conn
+        server_listener_conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_listener_conn.bind(('', 0))
+        server_listener_conn.listen(5)
+        server_listener_conn.setblocking(0)
+
+        self.client_conn = client_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_conn.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        client_conn.setblocking(0)
+        client_conn.connect_ex(server_listener_conn.getsockname())
+        server_conn, server_addr = server_listener_conn.accept()
+        self.server_conn = server_conn
+        server_conn.setblocking(0)
+        yield (client_conn, server_conn)
+        client_conn.close()
+        server_conn.close()
+        server_listener_conn.close()
+
+
+class TestConcerns(BaseCase):
 
     async def setUp(self):
         self._l, self._r = socket.socketpair()
@@ -15,21 +40,36 @@ class TestConcerns(asynctest.TestCase):
 
     async def test_concerns(self):
         # should return imediately
-        await aioldsplice.writer_ready(self._l, _loop=self.loop)
+        await aioldsplice.writer_ready(self._l.fileno(), _loop=self.loop)
         # should time out
         with self.assertRaises(asyncio.TimeoutError):
-            await asyncio.wait_for(aioldsplice.reader_ready(self._r, _loop=self.loop), 0.1)
+            await asyncio.wait_for(aioldsplice.reader_ready(self._r.fileno(), _loop=self.loop), 0.1)
+        await aioldsplice.writer_ready(self._r, _loop=self.loop)
         self._l.sendall(b"test")
         await aioldsplice.reader_ready(self._r, _loop=self.loop)
 
-    def test_concern_cancel(self):
+    async def test_concern_cancel(self):
         wc = aioldsplice.writer_ready(self._l, _loop=self.loop)
         wc.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await wc
         rc = aioldsplice.reader_ready(self._l, _loop=self.loop)
         rc.cancel()
 
+    async def test_disconnect_with_concern_registered(self):
+        with self.socketpair() as (c_conn, s_conn):
+            wc = aioldsplice.writer_ready(s_conn, _loop=self.loop)
+            c_conn.close()
+            await wc
 
-class TestProxy(asynctest.TestCase):
+    def test_disconnect_before_concern_registered(self):
+        with self.socketpair() as (c_conn, s_conn):
+            pass
+        with self.assertRaises(ValueError):
+            aioldsplice.writer_ready(s_conn, _loop=self.loop)
+
+
+class TestProxy(BaseCase):
 
     _test_msg = b"testing 1234"
     _test_return_msg = None
@@ -103,4 +143,11 @@ class TestProxy(asynctest.TestCase):
             except asyncio.TimeoutError:
                 break
         with self.assertRaises(asyncio.TimeoutError):
+            await proxy_task
+
+    async def test_proxy_finish(self):
+        with self.socketpair() as (l_c_conn, l_s_conn), self.socketpair() as (r_c_conn, r_s_conn):
+            proxy_task = self.loop.create_task(aioldsplice.proxy(l_s_conn, r_s_conn,
+                                                                 _loop=self.loop))
+            l_c_conn.close()
             await proxy_task
