@@ -6,7 +6,6 @@ import fcntl
 import os
 import asyncio
 import logging
-from functools import partial
 
 logger = logging.getLogger('aioldsplice')
 
@@ -28,11 +27,7 @@ async def proxy(l_conn, r_conn,
 
     async def proxy_i(r_conn, w_conn):
         while True:
-            try:
-                await reader_ready(r_conn, _loop=loop)
-            except asyncio.CancelledError:
-                logger.debug("{} to {} cancelled, returning".format(r_conn, w_conn))
-                return
+            await reader_ready(r_conn, _loop=loop)
             try:
                 nbytes = splice.splice(r_conn, None, w_conn, None, chunksize, splice_flags)
             except IOError as e:
@@ -42,7 +37,7 @@ async def proxy(l_conn, r_conn,
                     continue
                 raise
             if not nbytes:
-                logger.debug("no bytes on the {} to {} path".format(r_conn, w_conn))
+                logger.error("no bytes on the {} to {} path".format(r_conn, w_conn))
                 return
 
     done, pending = await asyncio.wait([
@@ -75,21 +70,14 @@ def _ready(type, sock, _loop=None):
     loop = _loop if _loop is not None else asyncio.get_event_loop()
     f = asyncio.Future()
 
-    def tidy(_):
-        try:
-            getattr(loop, "remove_{}".format(type))(sock)
-        except OSError as e:
-            if e.errno != 9:
-                raise
+    f.add_done_callback(lambda _: getattr(loop, "remove_{}".format(type))(sock))
 
-    f.add_done_callback(tidy)
-    # Put this on the event loop so that it gets called after any tidy callbacks that still want
-    #  to happen for this socket. An example race condition that gets hit without this is
-    #  without data ready await a reader_ready with a timeout, after the timeout send data and await
-    #  the reader_ready without a timout. it's a deadlock, the timeout schedules tidy for later, the
-    #  next reader ready sets the callback, then the tidy from the first timed out one removes the
-    #  callback and the result is never set. This took ages to find so don't mess with it.
-    loop.call_soon(getattr(loop, "add_{}".format(type)), sock, partial(f.set_result, sock))
+    def cb():
+        if f.cancelled():
+            return
+        f.set_result(sock)
+
+    getattr(loop, "add_{}".format(type))(sock, cb)
     return f
 
 
